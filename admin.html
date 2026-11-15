@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - BITE THEORY</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .edit-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .edit-modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            width: min(550px, 100%);
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.4);
+        }
+        .dark-mode .edit-modal-content {
+            background: #222;
+            color: #eee;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>BITE THEORY Admin Dashboard</h1>
+    <p>Operational Control Center &bull; Real-time Orders, Bookings &amp; Menu Management</p>
+</header>
+
+<nav>
+    <a href="#overview" class="admin-nav-link active" onclick="showAdminSection('overview', this)">Overview</a>
+    <a href="#orders" class="admin-nav-link" onclick="showAdminSection('orders', this)">Orders ({{ stats.total_orders }})</a>
+    <a href="#reservations" class="admin-nav-link" onclick="showAdminSection('reservations', this)">Reservations ({{ stats.total_reservations }})</a>
+    <a href="#menu" class="admin-nav-link" onclick="showAdminSection('menu', this)">Menu Items ({{ stats.total_menu_items }})</a>
+    <a href="#users" class="admin-nav-link" onclick="showAdminSection('users', this)">Users ({{ stats.total_users }})</a>
+    <a href="#messages" class="admin-nav-link" onclick="showAdminSection('messages', this)">Messages ({{ stats.unread_messages }})</a>
+    <a href="#settings" class="admin-nav-link" onclick="showAdminSection('settings', this)">Settings</a>
+    <a href="{{ url_for('kitchen') }}" target="_blank" style="color:var(--gold); font-weight:bold;">🍳 Kitchen Screen</a>
+    <a href="{{ url_for('admin_tables') }}" style="color:var(--gold); font-weight:bold;">🪑 Table QR Codes</a>
+
+    <span class="nav-user">👑 {{ session.get('user_name') }}</span>
+    <a href="{{ url_for('home') }}" target="_blank">🌐 View Website</a>
+    <a href="{{ url_for('logout') }}">Logout</a>
+    <a href="javascript:void(0)" onclick="toggleDarkMode()">🌓 Dark Mode</a>
+</nav>
+
+<div class="alerts-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">
+                    <span>{{ message }}</span>
+                    <button class="close-btn" onclick="this.parentElement.remove()">&times;</button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+
+<div class="container">
+
+    <!-- ==================== OVERVIEW SECTION ==================== -->
+    <div id="section-overview" class="admin-section">
+        <h2 class="title">Dashboard Overview &amp; Key Metrics</h2>
+
+        <div class="admin-stats">
+            <div class="stat-card">
+                <h3>Total Orders</h3>
+                <div class="stat-number">{{ stats.total_orders }}</div>
+                <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">
+                    Pending: <strong style="color:var(--warning);">{{ stats.pending_orders }}</strong>
+                </div>
+            </div>
+
+            <div class="stat-card" style="border-left-color:var(--success);">
+                <h3>Total Revenue</h3>
+                <div class="stat-number" style="color:var(--success);">₹{{ '%.2f'|format(stats.total_revenue) }}</div>
+                <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">Verified order totals</div>
+            </div>
+
+            <div class="stat-card" style="border-left-color:var(--info);">
+                <h3>Reservations</h3>
+                <div class="stat-number" style="color:var(--info);">{{ stats.total_reservations }}</div>
+                <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">
+                    Pending: <strong style="color:var(--warning);">{{ stats.pending_reservations }}</strong>
+                </div>
+            </div>
+
+            <div class="stat-card" style="border-left-color:var(--gold);">
+                <h3>Dishes on Menu</h3>
+                <div class="stat-number" style="color:#b38600;">{{ stats.total_menu_items }}</div>
+                <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">Across {{ categories|length }} categories</div>
+            </div>
+
+            <div class="stat-card" style="border-left-color:#6f42c1;">
+                <h3>Customers</h3>
+                <div class="stat-number" style="color:#6f42c1;">{{ stats.total_users }}</div>
+                <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">Registered accounts</div>
+            </div>
+
+            <div class="stat-card" style="border-left-color:var(--danger);">
+                <h3>Unread Messages</h3>
+                <div class="stat-number" style="color:var(--danger);">{{ stats.unread_messages }}</div>
+                <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">Customer inquiries</div>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:20px; flex-wrap:wrap;">
+            <!-- Recent Orders Preview -->
+            <div class="card" style="flex:1; min-width:320px;">
+                <h3 style="color:var(--primary); margin-bottom:15px;">Latest Customer Orders</h3>
+                {% if orders %}
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>#ID</th>
+                                    <th>Customer</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in orders[:5] %}
+                                    <tr>
+                                        <td>#{{ order.id }}</td>
+                                        <td>{{ order.customer_name }}</td>
+                                        <td>₹{{ '%.2f'|format(order.total) }}</td>
+                                        <td><span class="badge badge-{{ order.status.lower() }}">{{ order.status }}</span></td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p style="color:var(--text-muted);">No orders placed yet.</p>
+                {% endif %}
+            </div>
+
+            <!-- Recent Bookings Preview -->
+            <div class="card" style="flex:1; min-width:320px;">
+                <h3 style="color:var(--primary); margin-bottom:15px;">Latest Table Bookings</h3>
+                {% if reservations %}
+                    <div class="table-responsive">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Guest</th>
+                                    <th>Date &amp; Time</th>
+                                    <th>Guests</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for r in reservations[:5] %}
+                                    <tr>
+                                        <td>{{ r.name }}</td>
+                                        <td>{{ r.date }} @ {{ r.time }}</td>
+                                        <td>{{ r.persons }}</td>
+                                        <td><span class="badge badge-{{ r.status.lower() }}">{{ r.status }}</span></td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p style="color:var(--text-muted);">No reservations made yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== ORDERS SECTION ==================== -->
+    <div id="section-orders" class="admin-section" style="display:none;">
+        <h2 class="title">Customer Food Orders</h2>
+
+        {% if orders %}
+            <div class="card">
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#ID</th>
+                                <th>Date &amp; Time</th>
+                                <th>Customer &amp; Contact</th>
+                                <th>Table &amp; Notes</th>
+                                <th>Items Ordered</th>
+                                <th>Amount</th>
+                                <th>Status Update</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for order in orders %}
+                                <tr>
+                                    <td><strong>#{{ order.id }}</strong></td>
+                                    <td style="font-size:13px;">{{ (order.created_at|ist).strftime('%d/%m/%Y %H:%M') }}</td>
+                                    <td>
+                                        <strong>{{ order.customer_name }}</strong><br>
+                                        <span style="font-size:12px; color:var(--text-muted);">
+                                            {% if order.customer_phone and order.customer_phone != '-' %}📞 {{ order.customer_phone }}<br>{% endif %}
+                                            {% if order.customer_email %}✉️ {{ order.customer_email }}{% endif %}
+                                        </span>
+                                    </td>
+                                    <td style="font-size:13px; max-width:200px;">
+                                        <strong>🪑 Table {{ order.table_number or '—' }}</strong>
+                                        {% if order.notes %}
+                                            <br><em style="color:#d35400;">Note: {{ order.notes }}</em>
+                                        {% endif %}
+                                    </td>
+                                    <td style="font-size:13px;">
+                                        <ul style="padding-left:15px; margin:0;">
+                                            {% for item in order.items %}
+                                                <li>
+                                                    <strong>{{ item.quantity }}&times;</strong> {{ item.item_name }} (₹{{ '%.2f'|format(item.item_total) }})
+                                                    {% if item.customizations %}
+                                                        <br><span style="font-size:11px; color:var(--text-muted);">{{ item.customizations }}</span>
+                                                    {% endif %}
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    </td>
+                                    <td>
+                                        <strong>₹{{ '%.2f'|format(order.total) }}</strong><br>
+                                        <span class="badge badge-{{ 'completed' if order.payment_status == 'Paid' else 'pending' }}">{{ order.payment_status }}</span><br>
+                                        <span style="font-size:11px; color:var(--text-muted);">{{ order.payment_method }}</span>
+                                        {% if order.payment_status != 'Paid' and order.status != 'Cancelled' %}
+                                        <form action="{{ url_for('admin_order_paid', id=order.id) }}" method="POST" style="margin-top:6px;">
+                                            <button type="submit" class="btn btn-sm btn-success">Mark Paid</button>
+                                        </form>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <form action="{{ url_for('admin_order_status', id=order.id) }}" method="POST" style="display:flex; flex-direction:column; gap:6px;">
+                                            <select name="status" style="padding:6px; font-size:13px; margin:0;">
+                                                <option value="Pending" {% if order.status == 'Pending' %}selected{% endif %}>Pending</option>
+                                                <option value="Preparing" {% if order.status == 'Preparing' %}selected{% endif %}>Preparing</option>
+                                                <option value="Ready" {% if order.status == 'Ready' %}selected{% endif %}>Ready</option>
+                                                <option value="Completed" {% if order.status == 'Completed' %}selected{% endif %}>Completed</option>
+                                                <option value="Cancelled" {% if order.status == 'Cancelled' %}selected{% endif %}>Cancelled</option>
+                                            </select>
+                                            <button type="submit" class="btn btn-sm btn-gold">Update</button>
+                                        </form>
+                                    </td>
+                                    <td>
+                                        <form action="{{ url_for('admin_order_delete', id=order.id) }}" method="POST" onsubmit="return confirm('Delete Order #{{ order.id }}?');">
+                                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% else %}
+            <div class="card" style="text-align:center; padding:40px;">
+                <p style="color:var(--text-muted); font-size:18px;">No orders found in the database.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- ==================== RESERVATIONS SECTION ==================== -->
+    <div id="section-reservations" class="admin-section" style="display:none;">
+        <h2 class="title">Table Reservations</h2>
+
+        {% if reservations %}
+            <div class="card">
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#ID</th>
+                                <th>Guest Name</th>
+                                <th>Contact Details</th>
+                                <th>Reservation Date &amp; Time</th>
+                                <th>Guests</th>
+                                <th>Special Notes</th>
+                                <th>Status Update</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in reservations %}
+                                <tr>
+                                    <td>#{{ r.id }}</td>
+                                    <td><strong>{{ r.name }}</strong></td>
+                                    <td style="font-size:13px;">
+                                        📞 {{ r.phone }}<br>
+                                        ✉️ {{ r.email }}
+                                    </td>
+                                    <td>
+                                        <strong>{{ r.date }}</strong><br>
+                                        {{ r.time }}
+                                    </td>
+                                    <td><strong>{{ r.persons }} Persons</strong></td>
+                                    <td style="font-size:13px; color:var(--text-muted);">{{ r.special_requests or '-' }}</td>
+                                    <td>
+                                        <form action="{{ url_for('admin_reservation_status', id=r.id) }}" method="POST" style="display:flex; flex-direction:column; gap:6px;">
+                                            <select name="status" style="padding:6px; font-size:13px; margin:0;">
+                                                <option value="Pending" {% if r.status == 'Pending' %}selected{% endif %}>Pending</option>
+                                                <option value="Confirmed" {% if r.status == 'Confirmed' %}selected{% endif %}>Confirmed</option>
+                                                <option value="Cancelled" {% if r.status == 'Cancelled' %}selected{% endif %}>Cancelled</option>
+                                            </select>
+                                            <button type="submit" class="btn btn-sm btn-gold">Update</button>
+                                        </form>
+                                    </td>
+                                    <td>
+                                        <form action="{{ url_for('admin_reservation_delete', id=r.id) }}" method="POST" onsubmit="return confirm('Delete reservation #{{ r.id }}?');">
+                                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% else %}
+            <div class="card" style="text-align:center; padding:40px;">
+                <p style="color:var(--text-muted); font-size:18px;">No reservations found in the database.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- ==================== MENU MANAGEMENT SECTION ==================== -->
+    <div id="section-menu" class="admin-section" style="display:none;">
+        <h2 class="title">Menu Management</h2>
+
+        <!-- Add New Menu Item Form -->
+        <div class="card" style="border-top:4px solid var(--primary); margin-bottom:30px;">
+            <h3 style="color:var(--primary); margin-bottom:15px;">➕ Add New Menu Item</h3>
+            <form action="{{ url_for('admin_menu_add') }}" method="POST" enctype="multipart/form-data">
+                <div class="form-row">
+                    <div>
+                        <label>Item Name *</label>
+                        <input type="text" name="name" required placeholder="e.g. Butter Chicken Kulcha">
+                    </div>
+                    <div>
+                        <label>Category *</label>
+                        <select name="category" required>
+                            <option value="Burger">Burger</option>
+                            <option value="Pizza">Pizza</option>
+                            <option value="Pasta">Pasta</option>
+                            <option value="Rice">Rice</option>
+                            <option value="Starter">Starter</option>
+                            <option value="Snacks">Snacks</option>
+                            <option value="Sandwich">Sandwich</option>
+                            <option value="Beverage">Beverage</option>
+                            <option value="Dessert">Dessert</option>
+                            <option value="Special">Chef's Special</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Price (₹) *</label>
+                        <input type="number" step="0.5" min="1" name="price" required placeholder="e.g. 249">
+                    </div>
+                </div>
+
+                <div>
+                    <label>Description</label>
+                    <textarea name="description" rows="2" placeholder="Describe the ingredients, taste, and serving size"></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div>
+                        <label>Upload Food Image (PNG, JPG, WEBP)</label>
+                        <input type="file" name="image_file" accept="image/*">
+                    </div>
+                    <div>
+                        <label>OR Food Image URL</label>
+                        <input type="url" name="image_url" placeholder="https://images.unsplash.com/...">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-success">✅ Save Dish to Menu</button>
+            </form>
+        </div>
+
+        <!-- Existing Menu Items Table -->
+        <div class="card">
+            <h3 style="color:var(--primary); margin-bottom:15px;">Current Menu Items ({{ menu|length }})</h3>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Image</th>
+                            <th>Dish Name</th>
+                            <th>Category</th>
+                            <th>Price</th>
+                            <th>Description</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in menu %}
+                            <tr>
+                                <td style="width:70px;">
+                                    <img src="{{ item.image }}" alt="{{ item.name }}"
+                                         style="width:60px; height:60px; object-fit:cover; border-radius:6px;"
+                                         onerror="this.src='/static/images/restaurant.jpg'">
+                                </td>
+                                <td><strong>{{ item.name }}</strong></td>
+                                <td><span class="badge" style="background:#f0e6e6; color:var(--primary);">{{ item.category }}</span></td>
+                                <td><strong>₹{{ '%.2f'|format(item.price) }}</strong></td>
+                                <td style="font-size:13px; color:var(--text-muted); max-width:250px;">{{ item.description }}</td>
+                                <td>
+                                    {% if item.is_available %}
+                                        <span class="badge badge-confirmed">Available</span>
+                                    {% else %}
+                                        <span class="badge badge-cancelled">Sold Out</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px;">
+                                        <button type="button" class="btn btn-sm btn-secondary" onclick="openEditModal({{ item.id }}, '{{ item.name|escape }}', '{{ item.category|escape }}', {{ item.price }}, '{{ item.description|escape }}', '{{ item.image|escape }}', {{ 'true' if item.is_available else 'false' }})">Edit</button>
+                                        <form action="{{ url_for('admin_menu_delete', id=item.id) }}" method="POST" onsubmit="return confirm('Delete dish {{ item.name }}?');">
+                                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Item Modal -->
+    <div id="editModal" class="edit-modal">
+        <div class="edit-modal-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3 style="color:var(--primary);">Edit Menu Item</h3>
+                <button type="button" onclick="closeEditModal()" style="font-size:24px; background:none; border:none; cursor:pointer;">&times;</button>
+            </div>
+
+            <form id="editForm" method="POST" enctype="multipart/form-data">
+                <div>
+                    <label>Dish Name *</label>
+                    <input type="text" id="editName" name="name" required>
+                </div>
+                <div>
+                    <label>Category *</label>
+                    <input type="text" id="editCategory" name="category" required>
+                </div>
+                <div>
+                    <label>Price (₹) *</label>
+                    <input type="number" step="0.5" id="editPrice" name="price" required>
+                </div>
+                <div>
+                    <label>Description</label>
+                    <textarea id="editDesc" name="description" rows="3"></textarea>
+                </div>
+                <div>
+                    <label>Change Image (Upload)</label>
+                    <input type="file" name="image_file" accept="image/*">
+                </div>
+                <div>
+                    <label>OR Image URL</label>
+                    <input type="url" id="editImageUrl" name="image_url">
+                </div>
+                <div style="margin:10px 0;">
+                    <label style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" id="editAvailable" name="is_available" value="1" style="width:auto; margin:0;">
+                        Dish is available for orders
+                    </label>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+                    <button type="submit" class="btn btn-success">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==================== USERS SECTION ==================== -->
+    <div id="section-users" class="admin-section" style="display:none;">
+        <h2 class="title">Registered Users &amp; Customers</h2>
+
+        <div class="card">
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#ID</th>
+                            <th>Full Name</th>
+                            <th>Email Address</th>
+                            <th>Phone</th>
+                            <th>Role</th>
+                            <th>Registered Date</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in users %}
+                            <tr>
+                                <td>#{{ u.id }}</td>
+                                <td><strong>{{ u.fullname }}</strong></td>
+                                <td>{{ u.email }}</td>
+                                <td>{{ u.phone or '-' }}</td>
+                                <td>
+                                    {% if u.is_admin %}
+                                        <span class="badge badge-admin">Administrator</span>
+                                    {% else %}
+                                        <span class="badge badge-customer">Customer</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ (u.created_at|ist).strftime('%d %b %Y') if u.created_at else '-' }}</td>
+                                <td>
+                                    {% if u.id != session.get('user_id') %}
+                                        <form action="{{ url_for('admin_user_delete', id=u.id) }}" method="POST" onsubmit="return confirm('Delete customer {{ u.fullname }}?');">
+                                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                        </form>
+                                    {% else %}
+                                        <span style="font-size:12px; color:var(--text-muted);">Current Admin</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== MESSAGES SECTION ==================== -->
+    <div id="section-messages" class="admin-section" style="display:none;">
+        <h2 class="title">Customer Contact Messages</h2>
+
+        {% if messages %}
+            <div class="card">
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#ID</th>
+                                <th>Date</th>
+                                <th>Sender</th>
+                                <th>Subject</th>
+                                <th>Message</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for msg in messages %}
+                                <tr>
+                                    <td>#{{ msg.id }}</td>
+                                    <td style="font-size:13px;">{{ (msg.created_at|ist).strftime('%d/%m/%Y %H:%M') }}</td>
+                                    <td>
+                                        <strong>{{ msg.name }}</strong><br>
+                                        <span style="font-size:12px; color:var(--text-muted);">
+                                            ✉️ {{ msg.email }}<br>
+                                            📞 {{ msg.phone or '-' }}
+                                        </span>
+                                    </td>
+                                    <td><strong>{{ msg.subject }}</strong></td>
+                                    <td style="font-size:13px; max-width:300px;">{{ msg.message }}</td>
+                                    <td>
+                                        {% if msg.status == 'Unread' %}
+                                            <span class="badge badge-pending">Unread</span>
+                                        {% else %}
+                                            <span class="badge badge-completed">Read</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div style="display:flex; gap:6px;">
+                                            {% if msg.status == 'Unread' %}
+                                                <form action="{{ url_for('admin_message_status', id=msg.id) }}" method="POST">
+                                                    <input type="hidden" name="status" value="Read">
+                                                    <button type="submit" class="btn btn-sm btn-success">Mark Read</button>
+                                                </form>
+                                            {% endif %}
+                                            <form action="{{ url_for('admin_message_delete', id=msg.id) }}" method="POST" onsubmit="return confirm('Delete message #{{ msg.id }}?');">
+                                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% else %}
+            <div class="card" style="text-align:center; padding:40px;">
+                <p style="color:var(--text-muted); font-size:18px;">No contact messages received yet.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- ==================== SETTINGS SECTION ==================== -->
+    <div id="section-settings" class="admin-section" style="display:none;">
+        <h2 class="title">Admin Settings &amp; Security</h2>
+
+        <div class="card" style="max-width:550px; margin:0 auto; border-top:4px solid var(--primary);">
+            <h3 style="color:var(--primary); margin-bottom:15px;">Change Admin Password</h3>
+
+            <form action="{{ url_for('admin_change_password') }}" method="POST">
+                <div>
+                    <label>Current Password *</label>
+                    <input type="password" name="old_password" required placeholder="Enter current admin password">
+                </div>
+                <div>
+                    <label>New Password * (Min 6 characters)</label>
+                    <input type="password" name="new_password" minlength="6" required placeholder="Enter new strong password">
+                </div>
+                <div>
+                    <label>Confirm New Password *</label>
+                    <input type="password" name="confirm_password" minlength="6" required placeholder="Re-enter new password">
+                </div>
+                <button type="submit" class="btn btn-success" style="width:100%; margin-top:10px;">🔒 Update Password</button>
+            </form>
+        </div>
+    </div>
+
+</div>
+
+<footer>
+    <p>&copy; 2026 BITE THEORY. All Rights Reserved. Admin Management Suite.</p>
+</footer>
+
+<script>
+    function toggleDarkMode() {
+        document.body.classList.toggle("dark-mode");
+        localStorage.setItem("theme", document.body.classList.contains("dark-mode") ? "dark" : "light");
+    }
+    if (localStorage.getItem("theme") === "dark") {
+        document.body.classList.add("dark-mode");
+    }
+
+    // Switch between admin sections
+    function showAdminSection(secId, clickedLink) {
+        document.querySelectorAll(".admin-section").forEach(sec => sec.style.display = "none");
+        const target = document.getElementById("section-" + secId);
+        if (target) target.style.display = "block";
+
+        document.querySelectorAll(".admin-nav-link").forEach(l => l.classList.remove("active"));
+        if (clickedLink) clickedLink.classList.add("active");
+    }
+
+    // Check hash on page load (e.g. /admin#orders)
+    window.addEventListener("DOMContentLoaded", () => {
+        const hash = window.location.hash.replace("#", "");
+        if (hash) {
+            const link = document.querySelector(`.admin-nav-link[href="#${hash}"]`);
+            if (link) {
+                showAdminSection(hash, link);
+            }
+        }
+    });
+
+    // Edit Modal controls
+    function openEditModal(id, name, cat, price, desc, img, isAvailable) {
+        document.getElementById("editForm").action = `/admin/menu/${id}/edit`;
+        document.getElementById("editName").value = name;
+        document.getElementById("editCategory").value = cat;
+        document.getElementById("editPrice").value = price;
+        document.getElementById("editDesc").value = desc;
+        document.getElementById("editImageUrl").value = img;
+        document.getElementById("editAvailable").checked = isAvailable;
+        document.getElementById("editModal").style.display = "flex";
+    }
+
+    function closeEditModal() {
+        document.getElementById("editModal").style.display = "none";
+    }
+
+    window.onclick = function(event) {
+        const modal = document.getElementById("editModal");
+        if (event.target === modal) {
+            closeEditModal();
+        }
+    };
+</script>
+
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order History - BITE THEORY</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<header>
+    <h1>BITE THEORY</h1>
+    <p>Your Orders &amp; Reservations at a Glance</p>
+</header>
+
+<nav>
+    <a href="{{ url_for('home') }}">Home</a>
+    <a href="{{ url_for('menu') }}">Menu</a>
+    <a href="{{ url_for('cart') }}">Cart ({{ cart_count }})</a>
+
+    {% if session.get('user_id') %}
+        <span class="nav-user">👤 {{ session.get('user_name') }}</span>
+        <a href="{{ url_for('orders_view') }}" >My Orders</a>
+        <a href="{{ url_for('reservations_view') }}">My Bookings</a>
+        <a href="{{ url_for('history') }}" class="active">History</a>
+        {% if session.get('is_admin') %}
+            <a href="{{ url_for('admin_dashboard') }}" style="color:var(--gold); font-weight:bold;">Admin Panel</a>
+        {% endif %}
+        <a href="{{ url_for('logout') }}">Logout</a>
+    {% else %}
+        <a href="{{ url_for('orders_view') }}">My Orders</a>
+        <a href="{{ url_for('login') }}">Login</a>
+        <a href="{{ url_for('register') }}">Register</a>
+    {% endif %}
+
+    <a href="javascript:void(0)" onclick="toggleDarkMode()">🌓 Dark Mode</a>
+</nav>
+
+<div class="alerts-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">
+                    <span>{{ message }}</span>
+                    <button class="close-btn" onclick="this.parentElement.remove()">&times;</button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+
+<div class="container">
+    <h2 class="title">Order &amp; Reservation History</h2>
+
+    <div class="history-stats">
+        <div class="stat-card"><h3>Total Orders</h3><div class="stat-number">{{ stats.total_orders }}</div></div>
+        <div class="stat-card"><h3>Completed</h3><div class="stat-number">{{ stats.completed_orders }}</div></div>
+        <div class="stat-card"><h3>Total Spent</h3><div class="stat-number">₹{{ '%.2f'|format(stats.total_spent) }}</div></div>
+        <div class="stat-card"><h3>Table Bookings</h3><div class="stat-number">{{ stats.total_bookings }}</div></div>
+    </div>
+
+    {% if favourites %}
+    <div class="card" style="margin-bottom:25px;">
+        <h3 style="color:var(--primary); margin-bottom:10px;">⭐ Your Favourites</h3>
+        <div class="fav-list">
+            {% for name, qty in favourites %}
+                <span class="fav-chip">{{ name }} <small>× {{ qty }}</small></span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="history-tabs">
+        <button class="history-tab active" data-target="orders-panel" onclick="showTab(this)">🧾 Orders ({{ orders|length }})</button>
+        <button class="history-tab" data-target="bookings-panel" onclick="showTab(this)">🍽️ Reservations ({{ bookings|length }})</button>
+    </div>
+
+    <!-- Orders -->
+    <div id="orders-panel" class="history-panel">
+        {% if orders %}
+        <div class="history-filter">
+            <label for="statusFilter">Filter by status:</label>
+            <select id="statusFilter" onchange="filterOrders(this.value)">
+                <option value="all">All</option>
+                <option value="pending">Pending</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="preparing">Preparing</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+        </div>
+
+        <div class="card">
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Order</th>
+                            <th>Date</th>
+                            <th>Items</th>
+                            <th>Payment</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in orders %}
+                        <tr class="order-row" data-status="{{ order.status.lower() }}">
+                            <td><strong>#{{ order.id }}</strong></td>
+                            <td style="white-space:nowrap;">{{ (order.created_at|ist).strftime('%d %b %Y') }}<br><small style="color:var(--text-muted);">{{ (order.created_at|ist).strftime('%I:%M %p') }}</small></td>
+                            <td style="font-size:13px;">
+                                {% for item in order.items %}
+                                    {{ item.item_name }} × {{ item.quantity }}{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                            </td>
+                            <td style="font-size:13px;">{{ order.payment_method }}</td>
+                            <td><strong>₹{{ '%.2f'|format(order.total) }}</strong></td>
+                            <td><span class="badge badge-{{ order.status.lower() }}">{{ order.status }}</span></td>
+                            <td>
+                                <form action="{{ url_for('reorder', order_id=order.id) }}" method="POST">
+                                    <button type="submit" class="btn btn-sm">🔁 Reorder</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p id="noMatch" style="display:none; text-align:center; padding:20px; color:var(--text-muted);">No orders match this status.</p>
+        </div>
+        {% else %}
+        <div class="card" style="text-align:center; padding:40px 20px;">
+            <p style="font-size:18px; color:var(--text-muted); margin-bottom:20px;">You have not placed any orders yet.</p>
+            <a href="{{ url_for('menu') }}" class="btn btn-lg">Explore Menu &amp; Order Now</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Reservations -->
+    <div id="bookings-panel" class="history-panel" style="display:none;">
+        {% if bookings %}
+        <div class="card">
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ref</th>
+                            <th>Date &amp; Time</th>
+                            <th>Guests</th>
+                            <th>Special Requests</th>
+                            <th>Booked On</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for b in bookings %}
+                        <tr>
+                            <td><strong>#{{ b.id }}</strong></td>
+                            <td>{{ b.date }} at {{ b.time }}</td>
+                            <td>{{ b.persons }}</td>
+                            <td style="font-size:13px;">{{ b.special_requests or '—' }}</td>
+                            <td style="font-size:13px;">{{ (b.created_at|ist).strftime('%d %b %Y') }}</td>
+                            <td><span class="badge badge-{{ b.status.lower() }}">{{ b.status }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% else %}
+        <div class="card" style="text-align:center; padding:40px 20px;">
+            <p style="font-size:18px; color:var(--text-muted); margin-bottom:20px;">You have no table reservations yet.</p>
+            <a href="{{ url_for('home') }}#reservation" class="btn btn-lg">Book a Table</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <div style="text-align:center; margin-top:25px;">
+        <a href="{{ url_for('home') }}" class="btn btn-secondary">← Back to Home</a>
+    </div>
+</div>
+
+<footer>
+    <p>&copy; 2026 BITE THEORY. All Rights Reserved.</p>
+</footer>
+
+<script>
+    function toggleDarkMode() {
+        document.body.classList.toggle("dark-mode");
+        localStorage.setItem("theme", document.body.classList.contains("dark-mode") ? "dark" : "light");
+    }
+    if (localStorage.getItem("theme") === "dark") {
+        document.body.classList.add("dark-mode");
+    }
+
+    function showTab(btn) {
+        document.querySelectorAll(".history-tab").forEach(t => t.classList.remove("active"));
+        document.querySelectorAll(".history-panel").forEach(p => p.style.display = "none");
+        btn.classList.add("active");
+        document.getElementById(btn.dataset.target).style.display = "block";
+    }
+    function filterOrders(status) {
+        let shown = 0;
+        document.querySelectorAll(".order-row").forEach(r => {
+            const match = status === "all" || r.dataset.status === status;
+            r.style.display = match ? "" : "none";
+            if (match) shown++;
+        });
+        document.getElementById("noMatch").style.display = shown ? "none" : "block";
+    }
+</script>
+
+</body>
+</html>

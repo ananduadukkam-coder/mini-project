@@ -1,0 +1,615 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BITE THEORY - Delicious Food, Great Taste!</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<!-- Header -->
+<header>
+    <h1>BITE THEORY</h1>
+    <p>Delicious Food, Great Taste &amp; Memorable Dining Experience</p>
+</header>
+
+<!-- Navigation Bar -->
+<nav>
+    <a href="#home">Home</a>
+    <a href="#offers">Offers</a>
+    <a href="#menu">Menu</a>
+    <a href="#cart">
+        Cart <span class="nav-badge" id="nav-cart-count">{{ cart_count }}</span>
+    </a>
+    <a href="#reservation">Reservation</a>
+    <a href="#gallery">Gallery</a>
+    <a href="#reviews">Reviews</a>
+    <a href="#contact">Contact</a>
+
+    {% if session.get('user_id') %}
+        <span class="nav-user">👤 {{ session.get('user_name') }}</span>
+        <a href="{{ url_for('orders_view') }}">My Orders</a>
+        <a href="{{ url_for('reservations_view') }}">My Bookings</a>
+        <a href="{{ url_for('history') }}">History</a>
+        {% if session.get('is_admin') %}
+            <a href="{{ url_for('admin_dashboard') }}" style="color:var(--gold); font-weight:bold;">Admin Panel</a>
+        {% endif %}
+        <a href="{{ url_for('logout') }}">Logout</a>
+    {% else %}
+        <a href="{{ url_for('orders_view') }}">My Orders</a>
+        <a href="{{ url_for('login') }}">Login</a>
+        <a href="{{ url_for('register') }}">Register</a>
+    {% endif %}
+
+    <a href="javascript:void(0)" onclick="toggleDarkMode()" id="darkModeToggle">🌓 Dark Mode</a>
+</nav>
+
+<!-- Flash Alerts Container -->
+<div class="alerts-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">
+                    <span>{{ message }}</span>
+                    <button class="close-btn" onclick="this.parentElement.remove()">&times;</button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+
+<!-- Hero Section -->
+<section id="home" class="hero">
+    <div class="hero-content">
+        <h1>Welcome To BITE THEORY</h1>
+        <p>Scan the QR code on your table, order from your phone, and pay by UPI when your meal is ready.</p>
+        {% if table_no %}<p class="table-pill">🪑 You are at Table {{ table_no }}</p>{% endif %}
+        <div class="hero-actions">
+            <a class="btn btn-lg" href="#menu">Explore Menu</a>
+            <a class="btn btn-lg btn-outline" href="#reservation">Book a Table</a>
+            <a class="btn btn-lg btn-outline" href="{{ url_for('scan') }}">📱 Select Table</a>
+            <a class="btn btn-lg btn-gold" href="{{ url_for('cart') }}">View Cart ({{ cart_count }})</a>
+        </div>
+    </div>
+</section>
+
+<!-- How It Works -->
+<section id="how-it-works">
+    <h2 class="title">How It Works</h2>
+    <div class="steps-grid">
+        <div class="step-box"><div class="step-no">1</div><h3>Scan</h3><p>Scan the QR code placed on your table.</p></div>
+        <div class="step-box"><div class="step-no">2</div><h3>Order</h3><p>Pick dishes from the live menu on your phone.</p></div>
+        <div class="step-box"><div class="step-no">3</div><h3>Get Notified</h3><p>The kitchen receives your order and alerts you when it is ready.</p></div>
+        <div class="step-box"><div class="step-no">4</div><h3>Pay by QR</h3><p>Pay the exact bill amount with any UPI app. Done!</p></div>
+    </div>
+</section>
+
+<!-- Offers Section -->
+<section id="offers">
+    <h2 class="title">Special Offers</h2>
+    <div class="offers">
+        <div class="offer-card">
+            <h3>🍕 Pizza Friday</h3>
+            <p><strong>Buy 1 Get 1 Free</strong> on all medium &amp; large pizzas every Friday!</p>
+        </div>
+        <div class="offer-card">
+            <h3>🎉 Festive Discount</h3>
+            <p><strong>Flat 20% Off</strong> on all dine-in and takeaway orders above ₹1,000.</p>
+        </div>
+        <div class="offer-card">
+            <h3>👨‍👩‍👧 Family Feast Combo</h3>
+            <p>Order any 2 Large Meals and get a <strong>complimentary dessert + drinks</strong>.</p>
+        </div>
+        <div class="offer-card">
+            <h3>🍔 Express Burger Combo</h3>
+            <p>Signature Burger + Peri-Peri Fries + Cold Beverage for only <strong>₹199</strong>.</p>
+        </div>
+    </div>
+</section>
+
+<!-- Menu Section -->
+<section id="menu">
+    <h2 class="title">Our Menu</h2>
+
+    <div class="menu-controls">
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Search food by name, category or ingredient..." onkeyup="filterMenu()">
+        </div>
+
+        <div class="category-tabs">
+            <button class="category-btn active" onclick="selectCategory('all', this)">All Items</button>
+            {% for cat in categories %}
+                <button class="category-btn" onclick="selectCategory('{{ cat.lower() }}', this)">{{ cat }}</button>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="food-container" id="foodContainer">
+        {% for item in menu_items %}
+            <div class="food-card" data-name="{{ item.name.lower() }}" data-category="{{ item.category.lower() }}" data-id="{{ item.id }}">
+                <div class="food-card-img-wrap">
+                    <img src="{{ item.image }}" alt="{{ item.name }}" loading="lazy" onerror="this.src='/static/images/restaurant.jpg'">
+                    <span class="food-card-category-badge">{{ item.category }}</span>
+                </div>
+                <div class="food-card-body">
+                    <h3>{{ item.name }}</h3>
+                    <p class="food-desc">{{ item.description }}</p>
+                    <div class="price-tag">₹{{ '%.2f'|format(item.price) }}</div>
+
+                    <!-- Customization Box -->
+                    <div class="customize-box">
+                        <h4>Ingredients</h4>
+                        <label class="option-row">
+                            <input type="checkbox" class="ingredient-opt" value="Extra Onions" checked> Onions
+                        </label>
+                        <label class="option-row">
+                            <input type="checkbox" class="ingredient-opt" value="Spicy Seasoning" checked> Spicy Seasoning
+                        </label>
+                        <label class="option-row">
+                            <input type="checkbox" class="ingredient-opt" value="Signature Sauce" checked> Signature Sauce
+                        </label>
+
+                        <h4>Add Extras</h4>
+                        {% if item.category == 'Burger' or item.category == 'Sandwich' %}
+                            <label class="option-row">
+                                <input type="checkbox" class="extra-opt" data-name="Extra Cheese" data-price="30"> Extra Cheese (+₹30)
+                            </label>
+                            <label class="option-row">
+                                <input type="checkbox" class="extra-opt" data-name="French Fries" data-price="50"> French Fries (+₹50)
+                            </label>
+                        {% elif item.category == 'Pizza' %}
+                            <label class="option-row">
+                                <input type="checkbox" class="extra-opt" data-name="Extra Mozzarella" data-price="60"> Extra Mozzarella (+₹60)
+                            </label>
+                            <label class="option-row">
+                                <input type="checkbox" class="extra-opt" data-name="Paneer Topping" data-price="70"> Paneer Topping (+₹70)
+                            </label>
+                        {% elif item.category == 'Rice' %}
+                            <label class="option-row">
+                                <input type="checkbox" class="extra-opt" data-name="Extra Raita" data-price="30"> Extra Raita (+₹30)
+                            </label>
+                            <label class="option-row">
+                                <input type="checkbox" class="extra-opt" data-name="Extra Gravy" data-price="40"> Extra Gravy (+₹40)
+                            </label>
+                        {% else %}
+                            <label class="option-row">
+                                <input type="checkbox" class="extra-opt" data-name="Cheese Dip" data-price="35"> Cheese Dip (+₹35)
+                            </label>
+                            <label class="option-row">
+                                <input type="checkbox" class="extra-opt" data-name="Extra Portion" data-price="50"> Extra Portion (+₹50)
+                            </label>
+                        {% endif %}
+                    </div>
+
+                    <!-- Quantity & Add to Cart -->
+                    <div class="qty-row">
+                        <label><strong>Quantity:</strong></label>
+                        <input type="number" id="qty-{{ item.id }}" min="1" max="20" value="1">
+                    </div>
+
+                    <button class="btn" onclick="addToCartItem({{ item.id }}, '{{ item.name }}', {{ item.price }})">
+                        🛒 Add To Cart
+                    </button>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</section>
+
+<!-- Shopping Cart Section -->
+<section id="cart" class="cart-section">
+    <h2 class="title">Your Shopping Cart</h2>
+
+    <div id="cartContent">
+        {% if cart_items %}
+            <ul class="cart-items-list" id="cartItemList">
+                {% for item in cart_items %}
+                    <li class="cart-item">
+                        <div class="cart-item-info">
+                            <h4>{{ item.name }} &times; {{ item.quantity }}</h4>
+                            {% if item.customizations %}
+                                <div class="cart-detail">{{ item.customizations }}</div>
+                            {% endif %}
+                            <div class="cart-item-price">₹{{ '%.2f'|format(item.item_total) }}</div>
+                        </div>
+                        <div class="cart-item-actions">
+                            <form action="{{ url_for('cart_update') }}" method="POST" style="display:inline;">
+                                <input type="hidden" name="index" value="{{ loop.index0 }}">
+                                <input type="hidden" name="action" value="decrease">
+                                <button type="submit" class="btn btn-sm btn-secondary">-</button>
+                            </form>
+                            <span><strong>{{ item.quantity }}</strong></span>
+                            <form action="{{ url_for('cart_update') }}" method="POST" style="display:inline;">
+                                <input type="hidden" name="index" value="{{ loop.index0 }}">
+                                <input type="hidden" name="action" value="increase">
+                                <button type="submit" class="btn btn-sm btn-secondary">+</button>
+                            </form>
+                            <form action="{{ url_for('cart_update') }}" method="POST" style="display:inline;">
+                                <input type="hidden" name="index" value="{{ loop.index0 }}">
+                                <input type="hidden" name="action" value="remove">
+                                <button type="submit" class="btn btn-sm btn-danger">&times;</button>
+                            </form>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+
+            <div class="cart-summary">
+                <div class="summary-row">
+                    <span>Subtotal:</span>
+                    <span>₹<span id="subtotalVal">{{ '%.2f'|format(subtotal) }}</span></span>
+                </div>
+                <div class="summary-row">
+                    <span>GST (5%):</span>
+                    <span>₹<span id="taxVal">{{ '%.2f'|format(tax) }}</span></span>
+                </div>
+                <div class="summary-row summary-total">
+                    <span>Total Amount:</span>
+                    <span>₹<span id="totalVal">{{ '%.2f'|format(total) }}</span></span>
+                </div>
+            </div>
+
+            <!-- Dine-in Order Form -->
+            <div class="card" style="margin-top:20px;">
+                <h3 style="color:var(--primary); margin-bottom:15px;">Place Your Table Order</h3>
+                <form action="{{ url_for('checkout') }}" method="POST">
+                    {% if table_no %}
+                    <p class="account-line">🪑 You are seated at <strong>Table {{ table_no }}</strong> · <a href="{{ url_for('scan') }}">Change table</a></p>
+                    <input type="hidden" name="table_no" value="{{ table_no }}">
+                    {% else %}
+                    <div>
+                        <label>Select Your Table *</label>
+                        <select name="table_no" required>
+                            <option value="">Choose your table number</option>
+                            {% for t in tables %}<option value="{{ t.number }}">Table {{ t.number }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div>
+                        <label>Your Name (Optional)</label>
+                        <input type="text" name="name" value="{{ user.fullname if user else '' }}" placeholder="So the kitchen can call you out">
+                    </div>
+                    <div>
+                        <label>Special Instructions (Optional)</label>
+                        <input type="text" name="notes" placeholder="e.g. Less spicy, no onions">
+                    </div>
+                    <p style="font-size:13px; color:var(--text-muted); margin:10px 0;">
+                        Your order goes straight to the kitchen. You will be notified when it is ready, and can pay by UPI QR right from the next screen.
+                    </p>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
+                        <button type="submit" class="btn btn-lg btn-success">🍳 Send to Kitchen · ₹{{ '%.2f'|format(total) }}</button>
+                        <a href="{{ url_for('cart') }}" class="btn btn-lg btn-secondary">Detailed Cart View</a>
+                    </div>
+                </form>
+            </div>
+        {% else %}
+            <div style="text-align:center; padding:35px 20px;">
+                <p style="font-size:18px; color:var(--text-muted); margin-bottom:15px;">Your cart is currently empty.</p>
+                <a href="#menu" class="btn btn-lg">Browse Menu &amp; Add Delicious Dishes</a>
+            </div>
+        {% endif %}
+    </div>
+</section>
+
+<!-- Table Reservation Section -->
+<section id="reservation" class="card" style="max-width:900px; margin:30px auto;">
+    <h2 class="title">Table Reservation</h2>
+    <p style="text-align:center; color:var(--text-muted); margin-bottom:25px;">
+        Book your table in advance for family dining, dates, parties, or corporate meetings.
+    </p>
+
+    <form action="{{ url_for('reservation') }}" method="POST">
+        {% if user %}
+        <p class="account-line">Reserving as <strong>{{ user.fullname }}</strong> ({{ user.email }})</p>
+        <div class="form-row">
+            <div>
+                <label>Contact Number *</label>
+                <input type="tel" name="phone" value="{{ user.phone or '' }}" placeholder="Enter phone number" required>
+            </div>
+            <div>
+                <label>Number of Guests *</label>
+                <select name="persons" required>
+                    <option value="1">1 Person</option>
+                    <option value="2" selected>2 Persons (Couple)</option>
+                    <option value="3">3 Persons</option>
+                    <option value="4">4 Persons (Family)</option>
+                    <option value="5">5 Persons</option>
+                    <option value="6">6 Persons</option>
+                    <option value="8">8 Persons (Party)</option>
+                    <option value="10">10+ Persons (Large Event)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div>
+                <label>Reservation Date *</label>
+                <input type="date" name="date" id="resDate" required>
+            </div>
+            <div>
+                <label>Reservation Time *</label>
+                <input type="time" name="time" value="19:30" required>
+            </div>
+        </div>
+
+        <div>
+            <label>Special Requests (Optional)</label>
+            <textarea name="special_requests" rows="2" placeholder="e.g. Window seat, anniversary decoration, birthday cake request"></textarea>
+        </div>
+
+        <div style="text-align:center; margin-top:10px;">
+            <button type="submit" class="btn btn-lg">🍽️ Confirm Table Booking</button>
+        </div>
+        {% else %}
+        <div style="text-align:center; padding:15px 0;">
+            <p style="margin-bottom:15px; color:var(--text-muted);">Please sign in to reserve a table. Your name and email are taken from your account.</p>
+            <a href="{{ url_for('login', next=url_for('home')) }}" class="btn btn-lg">Login to Reserve</a>
+            <a href="{{ url_for('register') }}" class="btn btn-lg btn-secondary">Create Account</a>
+        </div>
+        {% endif %}
+    </form>
+</section>
+
+<!-- Food Gallery Section -->
+<section id="gallery">
+    <h2 class="title">Food &amp; Dining Gallery</h2>
+    <div class="gallery">
+        <img src="https://images.unsplash.com/photo-1513104890138-7c749659a591" alt="Pizza">
+        <img src="https://images.unsplash.com/photo-1568901346375-23c9450c58cd" alt="Burger">
+        <img src="https://images.unsplash.com/photo-1555949258-eb67b1ef0ceb" alt="Pasta">
+        <img src="https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=500" alt="Biryani">
+        <img src="https://images.unsplash.com/photo-1504674900247-0877df9cc836" alt="Wings">
+        <img src="https://images.unsplash.com/photo-1509722747041-616f39b57569?w=500" alt="Sandwich">
+    </div>
+</section>
+
+<!-- Customer Reviews Section -->
+<section id="reviews">
+    <h2 class="title">Customer Reviews</h2>
+    <div class="reviews-grid">
+        <div class="review-card">
+            <div class="rating">★★★★★ 5/5</div>
+            <p>"Outstanding food quality and courteous staff. The wood-fired pizza and sizzling brownie were exceptional!"</p>
+            <h4>- Rahul S., Bangalore</h4>
+        </div>
+        <div class="review-card">
+            <div class="rating">★★★★★ 5/5</div>
+            <p>"Easily the best restaurant in town for weekend family dinners. Fast service and authentic taste every single time."</p>
+            <h4>- Priya M., Indiranagar</h4>
+        </div>
+        <div class="review-card">
+            <div class="rating">★★★★☆ 4.5/5</div>
+            <p>"Great ambience, clean seating, and delicious burgers. The online ordering and reservation process is super smooth."</p>
+            <h4>- Arjun K., Koramangala</h4>
+        </div>
+    </div>
+</section>
+
+<!-- Contact Section -->
+<section id="contact" class="card" style="max-width:850px; margin:30px auto;">
+    <h2 class="title">Contact Us</h2>
+    <p style="text-align:center; color:var(--text-muted); margin-bottom:20px;">
+        Have a question or feedback? Reach out to our team directly.
+    </p>
+
+    <form id="contactForm" action="{{ url_for('contact') }}" method="POST">
+        <div class="form-row">
+            <div>
+                <label>Your Name *</label>
+                <input type="text" name="name" value="{{ user.fullname if user else '' }}" required placeholder="Enter your name">
+            </div>
+            <div>
+                <label>Email Address *</label>
+                <input type="email" name="email" value="{{ user.email if user else '' }}" required placeholder="Enter your email">
+            </div>
+        </div>
+        <div class="form-row">
+            <div>
+                <label>Phone Number</label>
+                <input type="tel" name="phone" value="{{ user.phone if user else '' }}" placeholder="Enter phone number">
+            </div>
+            <div>
+                <label>Subject</label>
+                <input type="text" name="subject" placeholder="General Inquiry / Feedback / Catering">
+            </div>
+        </div>
+        <div>
+            <label>Message *</label>
+            <textarea name="message" rows="4" required placeholder="Type your message here..."></textarea>
+        </div>
+        <div style="text-align:center;">
+            <button class="btn btn-lg" type="submit">✉️ Send Message</button>
+        </div>
+    </form>
+</section>
+
+<!-- Footer -->
+<footer>
+    <h3>BITE THEORY</h3>
+    <p>📍 Location: 100 Feet Road, Indiranagar, Bangalore, Karnataka - 560038</p>
+    <p>📞 Phone: +91 9876543210 &nbsp;|&nbsp; ✉️ Email: info@bitetheory.com</p>
+    <p>⏰ Open Hours: 11:00 AM – 11:30 PM (Monday – Sunday)</p>
+    <p style="margin-top:10px;">
+        Follow Us:
+        <a href="https://facebook.com" target="_blank">Facebook</a> &nbsp;|&nbsp;
+        <a href="https://instagram.com" target="_blank">Instagram</a> &nbsp;|&nbsp;
+        <a href="https://wa.me/919876543210" target="_blank">WhatsApp</a> &nbsp;|&nbsp;
+        <a href="{{ url_for('admin_dashboard') }}">Admin Portal</a>
+    </p>
+    <br>
+    <p>&copy; 2026 BITE THEORY. All Rights Reserved. Built with Python Flask &amp; SQLite.</p>
+</footer>
+
+<!-- Floating WhatsApp Link -->
+<a href="https://wa.me/919876543210" target="_blank"
+   style="position:fixed;bottom:20px;right:20px;background:#25D366;color:white;padding:12px 18px;border-radius:50px;text-decoration:none;font-weight:bold;box-shadow:0 4px 12px rgba(0,0,0,.35);z-index:999;font-size:14px;display:flex;align-items:center;gap:6px;">
+    💬 WhatsApp
+</a>
+
+<!-- Scroll to top button -->
+<button onclick="window.scrollTo({top:0, behavior:'smooth'})" id="topBtn"
+        style="display:none;position:fixed;bottom:75px;right:20px;background:var(--primary);color:white;border:none;padding:10px 14px;border-radius:50%;cursor:pointer;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,.3);z-index:998;">
+    ▲
+</button>
+
+<!-- JavaScript for Interactivity -->
+<script>
+    // Set minimum date on reservation input to today
+    document.addEventListener("DOMContentLoaded", () => {
+        const dateInput = document.getElementById("resDate");
+        if (dateInput) {
+            const today = new Date().toISOString().split("T")[0];
+            dateInput.min = today;
+            if (!dateInput.value) dateInput.value = today;
+        }
+    });
+
+    // Dark Mode Toggle
+    function toggleDarkMode() {
+        document.body.classList.toggle("dark-mode");
+        const isDark = document.body.classList.contains("dark-mode");
+        localStorage.setItem("theme", isDark ? "dark" : "light");
+    }
+
+    if (localStorage.getItem("theme") === "dark") {
+        document.body.classList.add("dark-mode");
+    }
+
+    // Scroll to Top visibility
+    window.addEventListener("scroll", () => {
+        const topBtn = document.getElementById("topBtn");
+        if (topBtn) {
+            topBtn.style.display = (window.scrollY > 300) ? "block" : "none";
+        }
+    });
+
+    // Category Filter
+    let activeCategory = 'all';
+    function selectCategory(category, buttonEl) {
+        activeCategory = category;
+        document.querySelectorAll(".category-btn").forEach(btn => btn.classList.remove("active"));
+        if (buttonEl) buttonEl.classList.add("active");
+        filterMenu();
+    }
+
+    // Search and Filter Menu Items
+    function filterMenu() {
+        const searchVal = document.getElementById("searchInput").value.toLowerCase().trim();
+        const cards = document.querySelectorAll(".food-card");
+
+        cards.forEach(card => {
+            const name = card.dataset.name || "";
+            const cat = card.dataset.category || "";
+            const matchesCat = (activeCategory === 'all' || cat === activeCategory);
+            const matchesSearch = (name.includes(searchVal) || cat.includes(searchVal));
+
+            card.style.display = (matchesCat && matchesSearch) ? "flex" : "none";
+        });
+    }
+
+    // Add to Cart with AJAX
+    async function addToCartItem(itemId, itemName, basePrice) {
+        const card = document.querySelector(`.food-card[data-id="${itemId}"]`);
+        if (!card) return;
+
+        const qtyInput = document.getElementById(`qty-${itemId}`);
+        const quantity = parseInt(qtyInput ? qtyInput.value : 1) || 1;
+
+        // Customizations
+        const ingredientOpts = card.querySelectorAll(".ingredient-opt");
+        const removed = [];
+        ingredientOpts.forEach(cb => {
+            if (!cb.checked) removed.push(cb.value);
+        });
+
+        const extraOpts = card.querySelectorAll(".extra-opt:checked");
+        let extrasPrice = 0.0;
+        const extras = [];
+        extraOpts.forEach(cb => {
+            const pr = parseFloat(cb.dataset.price) || 0;
+            extrasPrice += pr;
+            extras.push(`${cb.dataset.name} (+₹${pr})`);
+        });
+
+        let custSummary = "";
+        if (removed.length > 0) custSummary += "Removed: " + removed.join(", ");
+        if (extras.length > 0) {
+            if (custSummary) custSummary += " | ";
+            custSummary += "Extras: " + extras.join(", ");
+        }
+
+        const formData = new FormData();
+        formData.append("item_id", itemId);
+        formData.append("food", itemName);
+        formData.append("quantity", quantity);
+        formData.append("customizations", custSummary);
+        formData.append("extras_price", extrasPrice);
+
+        try {
+            const res = await fetch("{{ url_for('cart_add') }}", {
+                method: "POST",
+                headers: { "X-Requested-With": "XMLHttpRequest" },
+                body: formData
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+                // Update badge
+                const badge = document.getElementById("nav-cart-count");
+                if (badge) badge.innerText = data.cart_count;
+
+                // Show alert toast
+                showToast(`✅ Added ${quantity} &times; ${itemName} to cart!`);
+
+                // If user is near cart or wants to see updated totals, refresh section
+                setTimeout(() => {
+                    window.location.reload();
+                }, 800);
+            }
+        } catch (err) {
+            // Fallback: submit standard form
+            const fallbackForm = document.createElement("form");
+            fallbackForm.method = "POST";
+            fallbackForm.action = "{{ url_for('cart_add') }}";
+            for (let [k, v] of formData.entries()) {
+                const hidden = document.createElement("input");
+                hidden.type = "hidden";
+                hidden.name = k;
+                hidden.value = v;
+                fallbackForm.appendChild(hidden);
+            }
+            document.body.appendChild(fallbackForm);
+            fallbackForm.submit();
+        }
+    }
+
+    // Toast helper
+    function showToast(msg) {
+        const existing = document.getElementById("toast-msg");
+        if (existing) existing.remove();
+
+        const toast = document.createElement("div");
+        toast.id = "toast-msg";
+        toast.innerHTML = msg;
+        toast.style.position = "fixed";
+        toast.style.bottom = "80px";
+        toast.style.left = "50%";
+        toast.style.transform = "translateX(-50%)";
+        toast.style.background = "#28a745";
+        toast.style.color = "white";
+        toast.style.padding = "12px 24px";
+        toast.style.borderRadius = "30px";
+        toast.style.boxShadow = "0 4px 15px rgba(0,0,0,0.3)";
+        toast.style.zIndex = "9999";
+        toast.style.fontWeight = "bold";
+        toast.style.fontSize = "15px";
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            if (toast) toast.remove();
+        }, 2500);
+    }
+</script>
+
+</body>
+</html>

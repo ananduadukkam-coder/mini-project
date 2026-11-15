@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registered Customers - BITE THEORY</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<header>
+    <h1>BITE THEORY</h1>
+    <p>Customer Account Management</p>
+</header>
+
+<nav>
+    <a href="{{ url_for('admin_dashboard') }}">Admin Dashboard</a>
+    <a href="{{ url_for('home') }}">View Website</a>
+    <a href="{{ url_for('logout') }}">Logout</a>
+    <a href="javascript:void(0)" onclick="toggleDarkMode()">🌓 Dark Mode</a>
+</nav>
+
+<div class="alerts-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">
+                    <span>{{ message }}</span>
+                    <button class="close-btn" onclick="this.parentElement.remove()">&times;</button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+
+<div class="container">
+    <h2 class="title">Registered Users &amp; Customers</h2>
+
+    <div class="card">
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Full Name</th>
+                        <th>Email Address</th>
+                        <th>Phone</th>
+                        <th>Role</th>
+                        <th>Registered On</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                        <tr>
+                            <td>#{{ user.id }}</td>
+                            <td><strong>{{ user.fullname }}</strong></td>
+                            <td>{{ user.email }}</td>
+                            <td>{{ user.phone or '-' }}</td>
+                            <td>
+                                {% if user.is_admin %}
+                                    <span class="badge badge-admin">Administrator</span>
+                                {% else %}
+                                    <span class="badge badge-customer">Customer</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ (user.created_at|ist).strftime('%d %b %Y') if user.created_at else '-' }}</td>
+                            <td>
+                                {% if user.id != session.get('user_id') %}
+                                    <form action="{{ url_for('admin_user_delete', id=user.id) }}" method="POST" onsubmit="return confirm('Delete user {{ user.fullname }}?');">
+                                        <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                                    </form>
+                                {% else %}
+                                    <span style="font-size:12px; color:var(--text-muted);">Current Admin</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div style="text-align:center; margin-top:20px;">
+        <a href="{{ url_for('admin_dashboard') }}" class="btn">← Back to Admin Dashboard</a>
+    </div>
+</div>
+
+<footer>
+    <p>&copy; 2026 BITE THEORY. All Rights Reserved.</p>
+</footer>
+
+<script>
+    function toggleDarkMode() {
+        document.body.classList.toggle("dark-mode");
+        localStorage.setItem("theme", document.body.classList.contains("dark-mode") ? "dark" : "light");
+    }
+    if (localStorage.getItem("theme") === "dark") {
+        document.body.classList.add("dark-mode");
+    }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Order - BITE THEORY</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<header>
+    <h1>BITE THEORY</h1>
+    <p>Live order status &amp; payment</p>
+</header>
+
+<nav>
+    <a href="{{ url_for('home') }}">Home</a>
+    <a href="{{ url_for('menu') }}">Menu</a>
+    <a href="{{ url_for('cart') }}">Cart ({{ cart_count }})</a>
+
+    {% if session.get('user_id') %}
+        <span class="nav-user">👤 {{ session.get('user_name') }}</span>
+        <a href="{{ url_for('orders_view') }}" >My Orders</a>
+        <a href="{{ url_for('reservations_view') }}">My Bookings</a>
+        <a href="{{ url_for('history') }}">History</a>
+        {% if session.get('is_admin') %}
+            <a href="{{ url_for('admin_dashboard') }}" style="color:var(--gold); font-weight:bold;">Admin Panel</a>
+        {% endif %}
+        <a href="{{ url_for('logout') }}">Logout</a>
+    {% else %}
+        <a href="{{ url_for('orders_view') }}">My Orders</a>
+        <a href="{{ url_for('login') }}">Login</a>
+        <a href="{{ url_for('register') }}">Register</a>
+    {% endif %}
+
+    <a href="javascript:void(0)" onclick="toggleDarkMode()">🌓 Dark Mode</a>
+</nav>
+
+<div class="alerts-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">
+                    <span>{{ message }}</span>
+                    <button class="close-btn" onclick="this.parentElement.remove()">&times;</button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<div class="container">
+    <div class="card" style="max-width:820px; margin:10px auto;">
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-bottom:1px solid var(--border-color); padding-bottom:12px; margin-bottom:18px;">
+            <div>
+                <h2 style="color:var(--primary);">Order #{{ order.id }} · Table {{ order.table_number or '—' }}</h2>
+                <span style="font-size:13px; color:var(--text-muted);">Placed at {{ (order.created_at|ist).strftime('%d %b %Y, %I:%M %p') }} · {{ order.customer_name }}</span>
+            </div>
+            <span id="statusBadge" class="badge badge-{{ order.status.lower() }}" style="font-size:14px; padding:6px 14px;">{{ order.status }}</span>
+        </div>
+
+        <div id="readyBanner" class="ready-banner">🔔 Your order is ready! It will be served at your table.</div>
+
+        {% if order.status == 'Cancelled' %}
+            <div class="alert alert-danger"><span>This order was cancelled. Please contact the staff.</span></div>
+        {% else %}
+        <div class="stepper" id="stepper">
+            <div class="st" data-step="Pending"><div class="dot">1</div>Order Placed</div>
+            <div class="st" data-step="Preparing"><div class="dot">2</div>Preparing</div>
+            <div class="st" data-step="Ready"><div class="dot">3</div>Ready to Serve</div>
+            <div class="st" data-step="Completed"><div class="dot">4</div>Served</div>
+        </div>
+        <p style="text-align:center; margin-bottom:15px;">
+            <button type="button" class="btn btn-sm btn-secondary" id="notifyBtn" onclick="enableNotifications()">🔔 Enable phone notifications</button>
+        </p>
+        {% endif %}
+
+        <div class="table-responsive">
+            <table>
+                <thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead>
+                <tbody>
+                    {% for item in order.items %}
+                    <tr>
+                        <td><strong>{{ item.item_name }}</strong>
+                            {% if item.customizations %}<br><span style="font-size:12px; color:var(--text-muted);">{{ item.customizations }}</span>{% endif %}
+                        </td>
+                        <td>{{ item.quantity }}</td>
+                        <td>₹{{ '%.2f'|format(item.item_total) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div style="text-align:right; margin-top:12px; font-size:15px;">
+            <p>Subtotal: ₹{{ '%.2f'|format(order.subtotal) }}</p>
+            <p>GST (5%): ₹{{ '%.2f'|format(order.tax) }}</p>
+            <h3 style="color:var(--primary);">Total: ₹{{ '%.2f'|format(order.total) }}</h3>
+        </div>
+        {% if order.notes %}<p style="margin-top:10px; font-size:14px;"><strong>Note to kitchen:</strong> {{ order.notes }}</p>{% endif %}
+    </div>
+
+    <!-- Payment -->
+    <div class="card" style="max-width:820px; margin:20px auto; text-align:center; border-top:4px solid var(--primary);">
+        {% if order.payment_status == 'Paid' %}
+            <h2 style="color:var(--success);">✅ Payment Received</h2>
+            <p class="pay-amount">₹{{ '%.2f'|format(order.total) }}</p>
+            <p style="color:var(--text-muted);">Paid via {{ order.payment_method }}. Thank you for dining at BITE THEORY!</p>
+        {% elif order.status == 'Cancelled' %}
+            <p style="color:var(--text-muted);">No payment is required for a cancelled order.</p>
+        {% else %}
+            <h2 style="color:var(--primary);">Pay Your Bill</h2>
+            <p class="pay-amount">₹{{ '%.2f'|format(order.total) }}</p>
+            <p style="color:var(--text-muted); margin-bottom:15px;">Scan this QR with any UPI app (GPay, PhonePe, Paytm, BHIM). The exact amount is filled in for you.</p>
+            <div class="qr-box"><div id="upiQr"></div></div>
+            <p style="margin-top:10px; font-size:13px;">UPI ID: <strong>{{ config.UPI_ID }}</strong></p>
+
+            <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap; margin-top:18px;">
+                <a href="{{ upi_link }}" class="btn btn-lg">📱 Open UPI App</a>
+                <form action="{{ url_for('order_pay', order_id=order.id) }}" method="POST">
+                    <input type="hidden" name="method" value="upi">
+                    <button type="submit" class="btn btn-lg btn-success" onclick="return confirm('Confirm that you have completed the UPI payment of ₹{{ '%.2f'|format(order.total) }}?');">✔ I Have Paid</button>
+                </form>
+                <form action="{{ url_for('order_pay', order_id=order.id) }}" method="POST">
+                    <input type="hidden" name="method" value="counter">
+                    <button type="submit" class="btn btn-lg btn-secondary">Pay at Counter</button>
+                </form>
+            </div>
+            {% if order.payment_method == 'Pay at Counter' %}
+                <p style="margin-top:12px; font-size:14px; color:var(--text-muted);">You chose to pay at the counter. The cashier will mark your bill as paid.</p>
+            {% endif %}
+        {% endif %}
+    </div>
+
+    <div style="text-align:center; margin:20px 0;">
+        <a href="{{ url_for('menu') }}" class="btn btn-secondary">➕ Order More</a>
+        <a href="{{ url_for('orders_view') }}" class="btn btn-secondary">My Orders</a>
+    </div>
+</div>
+
+<footer>
+    <p>&copy; 2026 BITE THEORY. All Rights Reserved.</p>
+</footer>
+
+<script>
+    function toggleDarkMode() {
+        document.body.classList.toggle("dark-mode");
+        localStorage.setItem("theme", document.body.classList.contains("dark-mode") ? "dark" : "light");
+    }
+    if (localStorage.getItem("theme") === "dark") {
+        document.body.classList.add("dark-mode");
+    }
+
+    const ORDER_ID = {{ order.id }};
+    const STEPS = ["Pending", "Preparing", "Ready", "Completed"];
+    let currentStatus = "{{ order.status }}";
+    let currentPay = "{{ order.payment_status }}";
+
+    function renderStepper(status) {
+        const idx = STEPS.indexOf(status);
+        document.querySelectorAll("#stepper .st").forEach((el, i) => {
+            el.classList.remove("done", "current");
+            if (i < idx || status === "Completed") el.classList.add("done");
+            else if (i === idx) el.classList.add("current");
+        });
+        const badge = document.getElementById("statusBadge");
+        badge.textContent = status;
+        badge.className = "badge badge-" + status.toLowerCase();
+        document.getElementById("readyBanner").style.display = (status === "Ready") ? "block" : "none";
+    }
+
+    function beep() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            [0, 0.25, 0.5].forEach(t => {
+                const o = ctx.createOscillator(), g = ctx.createGain();
+                o.connect(g); g.connect(ctx.destination);
+                o.frequency.value = 880; g.gain.value = 0.2;
+                o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.15);
+            });
+        } catch (e) {}
+    }
+
+    function notifyReady() {
+        beep();
+        if (navigator.vibrate) navigator.vibrate([300, 150, 300]);
+        if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("BITE THEORY", { body: "Your order #" + ORDER_ID + " is ready! 🍽️" });
+        }
+    }
+
+    function enableNotifications() {
+        if (!("Notification" in window)) { alert("Notifications are not supported on this browser. You will still see an alert on this page."); return; }
+        Notification.requestPermission().then(p => {
+            document.getElementById("notifyBtn").textContent = p === "granted" ? "🔔 Notifications enabled" : "Notifications blocked";
+        });
+    }
+
+    async function poll() {
+        try {
+            const res = await fetch("/api/order/" + ORDER_ID + "/status");
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.payment_status !== currentPay) { location.reload(); return; }
+            if (data.status !== currentStatus) {
+                currentStatus = data.status;
+                if (document.getElementById("stepper")) renderStepper(currentStatus);
+                if (currentStatus === "Ready") notifyReady();
+                if (currentStatus === "Cancelled") location.reload();
+            }
+        } catch (e) {}
+    }
+
+    if (document.getElementById("stepper")) renderStepper(currentStatus);
+    if (currentStatus === "Ready") document.getElementById("readyBanner").style.display = "block";
+    if (currentStatus !== "Completed" && currentStatus !== "Cancelled" || currentPay !== "Paid") setInterval(poll, 4000);
+
+    const qrEl = document.getElementById("upiQr");
+    if (qrEl && window.QRCode) {
+        new QRCode(qrEl, { text: {{ upi_link|tojson }}, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+    }
+</script>
+
+</body>
+</html>

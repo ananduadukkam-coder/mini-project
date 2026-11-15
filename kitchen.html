@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kitchen Display - BITE THEORY</title>
+    <style>
+        * { box-sizing:border-box; margin:0; padding:0; font-family:Arial, Helvetica, sans-serif; }
+        body { background:#121212; color:#eee; min-height:100vh; }
+        .top { display:flex; justify-content:space-between; align-items:center; padding:14px 22px; background:#8B0000; flex-wrap:wrap; gap:10px; }
+        .top h1 { font-size:22px; letter-spacing:1px; }
+        .top .right { display:flex; gap:16px; align-items:center; font-size:14px; }
+        .top a, .top button { color:#fff; background:rgba(255,255,255,.15); border:1px solid #fff; padding:6px 14px; border-radius:6px; text-decoration:none; cursor:pointer; font-size:13px; }
+        .board { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; padding:18px; }
+        @media (max-width:900px) { .board { grid-template-columns:1fr; } }
+        .col h2 { font-size:16px; padding:10px 14px; border-radius:8px 8px 0 0; display:flex; justify-content:space-between; }
+        .col.new h2 { background:#b8860b; } .col.prep h2 { background:#1f5fa8; } .col.ready h2 { background:#1e7a3c; }
+        .col .list { background:#1c1c1c; min-height:200px; padding:10px; border-radius:0 0 8px 8px; display:flex; flex-direction:column; gap:12px; }
+        .ticket { background:#262626; border-left:6px solid #888; border-radius:8px; padding:12px 14px; }
+        .ticket.fresh { animation:flash 1s 4; }
+        .ticket.late { border-left-color:#e53935; }
+        @keyframes flash { 0%,100% { background:#262626; } 50% { background:#5c4a00; } }
+        .ticket .head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+        .ticket .tbl { font-size:24px; font-weight:bold; color:#ffd54f; }
+        .ticket .meta { font-size:12px; color:#aaa; }
+        .ticket ul { list-style:none; margin:8px 0; }
+        .ticket li { font-size:16px; padding:3px 0; border-bottom:1px dashed #3a3a3a; }
+        .ticket li small { display:block; color:#ff9800; font-size:12px; }
+        .ticket .note { background:#3b2a00; color:#ffcc80; padding:6px 8px; border-radius:6px; font-size:13px; margin:6px 0; }
+        .ticket .actions { display:flex; gap:8px; margin-top:8px; }
+        .ticket button { flex:1; padding:10px; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:14px; color:#fff; }
+        .b-start { background:#1f5fa8; } .b-ready { background:#1e7a3c; } .b-serve { background:#555; } .b-print { background:#333; flex:0 0 auto !important; }
+        .pay { font-size:11px; padding:2px 8px; border-radius:10px; }
+        .pay.paid { background:#1e7a3c; } .pay.unpaid { background:#7a5c00; }
+        .empty { color:#666; text-align:center; padding:25px 0; font-size:14px; }
+    </style>
+</head>
+<body>
+
+<div class="top">
+    <h1>🍳 BITE THEORY · Kitchen Display</h1>
+    <div class="right">
+        <span id="clock"></span>
+        <span id="liveStatus">● Live</span>
+        <button onclick="toggleSound()" id="soundBtn">🔊 Sound on</button>
+        <a href="{{ url_for('admin_dashboard') }}">Admin</a>
+    </div>
+</div>
+
+<div class="board">
+    <div class="col new"><h2>🆕 New Orders <span id="cNew">0</span></h2><div class="list" id="lNew"></div></div>
+    <div class="col prep"><h2>🔥 Preparing <span id="cPrep">0</span></h2><div class="list" id="lPrep"></div></div>
+    <div class="col ready"><h2>✅ Ready to Serve <span id="cReady">0</span></h2><div class="list" id="lReady"></div></div>
+</div>
+
+<script>
+    let seen = null;          // ids already shown (so only truly new orders trigger the alert)
+    let soundOn = true;
+    const fresh = new Set();
+
+    function toggleSound() {
+        soundOn = !soundOn;
+        document.getElementById("soundBtn").textContent = soundOn ? "🔊 Sound on" : "🔇 Sound off";
+    }
+
+    function ding() {
+        if (!soundOn) return;
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            [0, 0.2].forEach((t, i) => {
+                const o = ctx.createOscillator(), g = ctx.createGain();
+                o.connect(g); g.connect(ctx.destination);
+                o.frequency.value = i ? 1175 : 880; g.gain.value = 0.25;
+                o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.18);
+            });
+        } catch (e) {}
+    }
+
+    function el(tag, cls, text) {
+        const e = document.createElement(tag);
+        if (cls) e.className = cls;
+        if (text !== undefined) e.textContent = text;
+        return e;
+    }
+
+    function minutesAgo(iso) { return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000)); }
+
+    async function setStatus(id, status) {
+        await fetch("/api/kitchen/order/" + id + "/status", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status })
+        });
+        load();
+    }
+
+    function printTicket(o) {
+        const w = window.open("", "_blank", "width=380,height=600");
+        const lines = o.items.map(i => "<tr><td>" + i.qty + " x</td><td>" + escapeHtml(i.name) +
+            (i.custom ? "<br><small>" + escapeHtml(i.custom) + "</small>" : "") + "</td></tr>").join("");
+        w.document.write("<html><body style='font-family:monospace;width:300px'>" +
+            "<h2 style='text-align:center'>BITE THEORY</h2><h1 style='text-align:center'>TABLE " + o.table + "</h1>" +
+            "<p>Order #" + o.id + " &middot; " + escapeHtml(o.customer) + "</p><hr><table>" + lines + "</table><hr>" +
+            (o.notes ? "<p><b>NOTE:</b> " + escapeHtml(o.notes) + "</p><hr>" : "") +
+            "<p>" + new Date(o.created_at).toLocaleString() + "</p></body></html>");
+        w.document.close(); w.focus(); w.print();
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function ticket(o) {
+        const mins = minutesAgo(o.created_at);
+        const t = el("div", "ticket" + (fresh.has(o.id) ? " fresh" : "") + (mins >= 15 && o.status !== "Ready" ? " late" : ""));
+        const head = el("div", "head");
+        head.appendChild(el("span", "tbl", "Table " + o.table));
+        head.appendChild(el("span", "meta", "#" + o.id + " · " + mins + " min ago"));
+        t.appendChild(head);
+        const meta = el("div", "meta", o.customer + " ");
+        meta.appendChild(el("span", "pay " + (o.payment_status === "Paid" ? "paid" : "unpaid"), o.payment_status));
+        t.appendChild(meta);
+        const ul = el("ul");
+        o.items.forEach(i => {
+            const li = el("li", "", i.qty + " × " + i.name);
+            if (i.custom) li.appendChild(el("small", "", i.custom));
+            ul.appendChild(li);
+        });
+        t.appendChild(ul);
+        if (o.notes) t.appendChild(el("div", "note", "📝 " + o.notes));
+        const actions = el("div", "actions");
+        const pr = el("button", "b-print", "🖨️"); pr.title = "Print ticket"; pr.onclick = () => printTicket(o);
+        actions.appendChild(pr);
+        if (o.status === "Pending") { const b = el("button", "b-start", "Start Preparing"); b.onclick = () => setStatus(o.id, "Preparing"); actions.appendChild(b); }
+        if (o.status === "Preparing") { const b = el("button", "b-ready", "Mark Ready 🔔"); b.onclick = () => setStatus(o.id, "Ready"); actions.appendChild(b); }
+        if (o.status === "Ready") { const b = el("button", "b-serve", "Served ✔"); b.onclick = () => setStatus(o.id, "Completed"); actions.appendChild(b); }
+        t.appendChild(actions);
+        return t;
+    }
+
+    function fill(id, countId, orders) {
+        const box = document.getElementById(id);
+        box.innerHTML = "";
+        if (!orders.length) box.appendChild(el("div", "empty", "No orders"));
+        orders.forEach(o => box.appendChild(ticket(o)));
+        document.getElementById(countId).textContent = orders.length;
+    }
+
+    async function load() {
+        try {
+            const res = await fetch("/api/kitchen/orders");
+            if (!res.ok) throw new Error();
+            const orders = await res.json();
+            const ids = new Set(orders.map(o => o.id));
+            if (seen !== null) {
+                const newOnes = orders.filter(o => !seen.has(o.id));
+                if (newOnes.length) { newOnes.forEach(o => fresh.add(o.id)); ding(); }
+            }
+            seen = ids;
+            fill("lNew", "cNew", orders.filter(o => o.status === "Pending"));
+            fill("lPrep", "cPrep", orders.filter(o => o.status === "Preparing"));
+            fill("lReady", "cReady", orders.filter(o => o.status === "Ready"));
+            document.getElementById("liveStatus").textContent = "● Live";
+        } catch (e) {
+            document.getElementById("liveStatus").textContent = "○ Offline";
+        }
+    }
+
+    setInterval(() => { document.getElementById("clock").textContent = new Date().toLocaleTimeString(); }, 1000);
+    load();
+    setInterval(load, 4000);
+</script>
+</body>
+</html>

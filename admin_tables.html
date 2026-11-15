@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Table QR Codes - BITE THEORY</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        .qr-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:20px; }
+        .qr-card { text-align:center; padding:18px; }
+        .qr-card .qr-holder { display:inline-block; background:#fff; padding:10px; border-radius:8px; }
+        .qr-card h3 { color:var(--primary); margin:10px 0 2px; font-size:22px; }
+        .qr-card small { word-break:break-all; color:var(--text-muted); }
+        @media print {
+            header, nav, .no-print, footer, .alerts-container { display:none !important; }
+            .qr-grid { grid-template-columns:repeat(2, 1fr); }
+            .qr-card { page-break-inside:avoid; box-shadow:none; border:1px dashed #999; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>BITE THEORY</h1>
+    <p>Table QR Code Generator</p>
+</header>
+
+<nav>
+    <a href="{{ url_for('admin_dashboard') }}">← Admin Dashboard</a>
+    <a href="{{ url_for('kitchen') }}" target="_blank">🍳 Kitchen Screen</a>
+    <a href="{{ url_for('logout') }}">Logout</a>
+</nav>
+
+<div class="alerts-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }}"><span>{{ message }}</span><button class="close-btn" onclick="this.parentElement.remove()">&times;</button></div>
+        {% endfor %}
+    {% endwith %}
+</div>
+
+<div class="container">
+    <div class="card no-print" style="margin-bottom:20px;">
+        <h3 style="color:var(--primary); margin-bottom:10px;">Setup</h3>
+        <p style="font-size:14px; color:var(--text-muted); margin-bottom:10px;">
+            Each QR code opens the menu for that table. Customer phones must be able to reach this address.
+            On a local network use your PC's IP (e.g. <code>http://192.168.1.5:5000</code>); for a live deployment use your website address.
+        </p>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <input type="text" id="baseUrl" style="flex:1; min-width:240px; margin:0;" placeholder="http://192.168.1.5:5000">
+            <button class="btn" onclick="buildAll()">🔄 Generate QR Codes</button>
+            <button class="btn btn-gold" onclick="window.print()">🖨️ Print All</button>
+        </div>
+        <form action="{{ url_for('admin_table_add') }}" method="POST" style="display:flex; gap:10px; margin-top:15px; align-items:center;">
+            <input type="number" name="number" min="1" placeholder="New table no." style="width:160px; margin:0;" required>
+            <button class="btn btn-success" type="submit">➕ Add Table</button>
+        </form>
+    </div>
+
+    <div class="qr-grid">
+        {% for t in tables %}
+        <div class="card qr-card">
+            <div class="qr-holder"><div class="qr" data-table="{{ t.number }}"></div></div>
+            <h3>Table {{ t.number }}</h3>
+            <p style="font-size:13px;">Scan to order &amp; pay</p>
+            <small class="qr-link"></small>
+            <form class="no-print" action="{{ url_for('admin_table_delete', id=t.id) }}" method="POST" style="margin-top:10px;" onsubmit="return confirm('Remove Table {{ t.number }}?');">
+                <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+    const input = document.getElementById("baseUrl");
+    input.value = localStorage.getItem("qrBaseUrl") || window.location.origin;
+
+    function buildAll() {
+        const base = input.value.trim().replace(/\/+$/, "");
+        localStorage.setItem("qrBaseUrl", base);
+        document.querySelectorAll(".qr-card").forEach(card => {
+            const holder = card.querySelector(".qr");
+            const n = holder.dataset.table;
+            const url = base + "/t/" + n;
+            holder.innerHTML = "";
+            new QRCode(holder, { text: url, width: 170, height: 170, correctLevel: QRCode.CorrectLevel.M });
+            card.querySelector(".qr-link").textContent = url;
+        });
+    }
+    buildAll();
+</script>
+</body>
+</html>

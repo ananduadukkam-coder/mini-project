@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopping Cart - BITE THEORY</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<header>
+    <h1>BITE THEORY</h1>
+    <p>Review Your Selection &amp; Confirm Your Delicious Order</p>
+</header>
+
+<nav>
+    <a href="{{ url_for('home') }}">Home</a>
+    <a href="{{ url_for('menu') }}">Menu</a>
+    <a href="{{ url_for('cart') }}" class="active">Cart ({{ cart_count }})</a>
+
+    {% if session.get('user_id') %}
+        <span class="nav-user">👤 {{ session.get('user_name') }}</span>
+        <a href="{{ url_for('orders_view') }}">My Orders</a>
+        <a href="{{ url_for('reservations_view') }}">My Bookings</a>
+        <a href="{{ url_for('history') }}">History</a>
+        {% if session.get('is_admin') %}
+            <a href="{{ url_for('admin_dashboard') }}" style="color:var(--gold); font-weight:bold;">Admin Panel</a>
+        {% endif %}
+        <a href="{{ url_for('logout') }}">Logout</a>
+    {% else %}
+        <a href="{{ url_for('orders_view') }}">My Orders</a>
+        <a href="{{ url_for('login') }}">Login</a>
+        <a href="{{ url_for('register') }}">Register</a>
+    {% endif %}
+
+    <a href="javascript:void(0)" onclick="toggleDarkMode()">🌓 Dark Mode</a>
+</nav>
+
+<div class="alerts-container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">
+                    <span>{{ message }}</span>
+                    <button class="close-btn" onclick="this.parentElement.remove()">&times;</button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+
+<div class="container">
+    <div class="cart-section" style="margin:20px auto;">
+        <h2 class="title">Your Shopping Cart</h2>
+
+        {% if items %}
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <p><strong>{{ items|length }} item(s) in your basket</strong></p>
+                <form action="{{ url_for('cart_clear') }}" method="POST" onsubmit="return confirm('Clear all items from your cart?');">
+                    <button type="submit" class="btn btn-sm btn-danger">Clear Cart</button>
+                </form>
+            </div>
+
+            <ul class="cart-items-list">
+                {% for item in items %}
+                    <li class="cart-item">
+                        <div class="cart-item-info">
+                            <h4>{{ item.name }} &times; {{ item.quantity }}</h4>
+                            <div style="font-size:14px; color:#555;">Base Price: ₹{{ '%.2f'|format(item.price) }}</div>
+                            {% if item.customizations %}
+                                <div class="cart-detail">{{ item.customizations }}</div>
+                            {% endif %}
+                            <div class="cart-item-price">₹{{ '%.2f'|format(item.item_total) }}</div>
+                        </div>
+
+                        <div class="cart-item-actions">
+                            <form action="{{ url_for('cart_update') }}" method="POST" style="display:inline;">
+                                <input type="hidden" name="index" value="{{ loop.index0 }}">
+                                <input type="hidden" name="action" value="decrease">
+                                <button type="submit" class="btn btn-sm btn-secondary" title="Decrease Quantity">-</button>
+                            </form>
+
+                            <span style="font-size:16px; min-width:24px; text-align:center;"><strong>{{ item.quantity }}</strong></span>
+
+                            <form action="{{ url_for('cart_update') }}" method="POST" style="display:inline;">
+                                <input type="hidden" name="index" value="{{ loop.index0 }}">
+                                <input type="hidden" name="action" value="increase">
+                                <button type="submit" class="btn btn-sm btn-secondary" title="Increase Quantity">+</button>
+                            </form>
+
+                            <form action="{{ url_for('cart_update') }}" method="POST" style="display:inline; margin-left:10px;">
+                                <input type="hidden" name="index" value="{{ loop.index0 }}">
+                                <input type="hidden" name="action" value="remove">
+                                <button type="submit" class="btn btn-sm btn-danger" title="Remove Item">&times;</button>
+                            </form>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+
+            <div class="cart-summary">
+                <div class="summary-row">
+                    <span>Subtotal:</span>
+                    <span>₹{{ '%.2f'|format(subtotal) }}</span>
+                </div>
+                <div class="summary-row">
+                    <span>GST (5%):</span>
+                    <span>₹{{ '%.2f'|format(tax) }}</span>
+                </div>
+                <div class="summary-row summary-total">
+                    <span>Total Amount Payable:</span>
+                    <span>₹{{ '%.2f'|format(total) }}</span>
+                </div>
+            </div>
+
+            <!-- Dine-in Order Form -->
+            <div class="card" style="margin-top:25px; border-top:4px solid var(--primary);">
+                <h3 style="color:var(--primary); margin-bottom:15px;">Place Your Table Order</h3>
+                <form action="{{ url_for('checkout') }}" method="POST">
+                    {% if table_no %}
+                    <p class="account-line">🪑 You are seated at <strong>Table {{ table_no }}</strong> · <a href="{{ url_for('scan') }}">Change table</a></p>
+                    <input type="hidden" name="table_no" value="{{ table_no }}">
+                    {% else %}
+                    <div>
+                        <label>Select Your Table *</label>
+                        <select name="table_no" required>
+                            <option value="">Choose your table number</option>
+                            {% for t in tables %}<option value="{{ t.number }}">Table {{ t.number }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    {% endif %}
+                    <div>
+                        <label>Your Name (Optional)</label>
+                        <input type="text" name="name" value="{{ user.fullname if user else '' }}" placeholder="So the kitchen can call you out">
+                    </div>
+                    <div>
+                        <label>Special Instructions (Optional)</label>
+                        <input type="text" name="notes" placeholder="e.g. Less spicy, no onions">
+                    </div>
+                    <p style="font-size:13px; color:var(--text-muted); margin:10px 0;">
+                        Your order goes straight to the kitchen. You will be notified when it is ready, and can pay by UPI QR right from the next screen.
+                    </p>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:10px;">
+                        <button type="submit" class="btn btn-lg btn-success">🍳 Send to Kitchen · ₹{{ '%.2f'|format(total) }}</button>
+                        <a href="{{ url_for('menu') }}" class="btn btn-lg btn-secondary">← Add More Items</a>
+                    </div>
+                </form>
+            </div>
+        {% else %}
+            <div style="text-align:center; padding:50px 20px;">
+                <p style="font-size:20px; color:var(--text-muted); margin-bottom:20px;">Your cart is empty.</p>
+                <a href="{{ url_for('menu') }}" class="btn btn-lg">🍽️ View Menu &amp; Add Food Items</a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<footer>
+    <p>&copy; 2026 BITE THEORY. All Rights Reserved.</p>
+</footer>
+
+<script>
+    function toggleDarkMode() {
+        document.body.classList.toggle("dark-mode");
+        localStorage.setItem("theme", document.body.classList.contains("dark-mode") ? "dark" : "light");
+    }
+    if (localStorage.getItem("theme") === "dark") {
+        document.body.classList.add("dark-mode");
+    }
+</script>
+
+</body>
+</html>
